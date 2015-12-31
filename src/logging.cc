@@ -49,8 +49,9 @@ public:
         // close fd
     }
     void WriteLog(int log_level, const char* buffer, int32_t len) {
+        std::string* log_str = new std::string(buffer, len);
         MutexLock lock(&mu_);
-        buffer_queue_.push(make_pair(log_level, new std::string(buffer, len)));
+        buffer_queue_.push(make_pair(log_level, log_str));
         jobs_.Signal();
     }
     void AsyncWriter() {
@@ -128,7 +129,10 @@ bool SetLogFile(const char* path, bool append) {
 }
 
 void Logv(int log_level, const char* format, va_list ap) {
-    const uint64_t thread_id = syscall(__NR_gettid);
+    static __thread uint64_t thread_id = 0;
+    if (thread_id == 0) {
+        thread_id = syscall(__NR_gettid);
+    }
 
     // We try twice: the first time with a fixed-size stack allocated buffer,
     // and the second time with a much larger dynamically allocated buffer.
@@ -212,6 +216,12 @@ void Log(int level, const char* fmt, ...) {
     if (level == FATAL) {
         abort();
     }
+}
+
+LogStream::LogStream(int level) : level_(level) {}
+
+LogStream::~LogStream() {
+    Log(level_, "%s", oss_.str().c_str());
 }
 
 } // namespace common
